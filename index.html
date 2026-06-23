@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>GridPulse — EV Grid Orchestration</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0b0f1a;--s1:#111827;--s2:#1a2236;--s3:#1f2d45;--s4:#243352;
+  --border:rgba(99,131,190,.16);--border2:rgba(99,131,190,.30);
+  --txt:#e8edf5;--muted:#7a92b4;--dim:#3d5270;
+  --blue:#3b82f6;--blue-d:rgba(59,130,246,.13);--blue-g:rgba(59,130,246,.30);
+  --teal:#14b8a6;--teal-d:rgba(20,184,166,.13);
+  --amber:#f59e0b;--amber-d:rgba(245,158,11,.13);
+  --red:#ef4444;--red-d:rgba(239,68,68,.13);
+  --green:#22c55e;--green-d:rgba(34,197,94,.13);
+  --purple:#a855f7;--purple-d:rgba(168,85,247,.13);
+  --r:9px;--r2:14px;
+  --mono:'JetBrains Mono','Fira Code','Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;font-size:13px;line-height:1.5;overflow:hidden;height:100vh}
+
+/* ── Layout ──────────────────────────────────── */
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{height:50px;display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ── Topbar ──────────────────────────────────── */
+.logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;letter-spacing:-.3px}
+.logo-icon{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--blue),var(--teal));display:flex;align-items:center;justify-content:center;font-size:14px}
+.tb-sep{height:20px;width:1px;background:var(--border);flex-shrink:0}
+.tb-tag{font-size:11px;color:var(--muted)}
+.live-pill{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:var(--green-d);color:var(--green);font-size:11px;font-weight:500}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.ml{margin-left:auto}
+.btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;transition:all .15s;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--s2);color:var(--txt)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:#2563eb}
+.btn.warn{background:var(--amber-d);border-color:var(--amber);color:var(--amber)}
+.btn.danger{background:var(--red-d);border-color:var(--red);color:var(--red)}
+.btn.success{background:var(--green-d);border-color:var(--green);color:var(--green)}
+select.spd{background:var(--s2);border:1px solid var(--border);color:var(--muted);font-size:11px;border-radius:6px;padding:5px 8px;cursor:pointer}
+
+/* ── Sidebar left ────────────────────────────── */
+.sidebar{width:290px;flex-shrink:0;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.ph{padding:12px 14px 8px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border)}
+
+/* ── Map ─────────────────────────────────────── */
+.map-area{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#gc{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+
+/* ── Right panel ─────────────────────────────── */
+.rpanel{width:320px;flex-shrink:0;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Tab system ─────────────────────────────── */
+.tabs{display:flex;gap:1px;padding:8px 10px 0;border-bottom:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.tab{padding:5px 10px;border-radius:6px 6px 0 0;font-size:11px;font-weight:500;cursor:pointer;color:var(--dim);border:1px solid transparent;border-bottom:none;transition:all .12s;position:relative;top:1px}
+.tab.on{color:var(--txt);background:var(--s2);border-color:var(--border);border-bottom-color:var(--s2)}
+.tab-body{display:none;flex:1;overflow-y:auto;overflow-x:hidden}
+.tab-body.on{display:block}
+
+/* ── Cards ───────────────────────────────────── */
+.card{margin:9px;padding:11px 13px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)}
+.ct{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+
+/* ── Stat grid ───────────────────────────────── */
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.sb{background:var(--s3);border-radius:8px;padding:9px 11px}
+.sl{font-size:10px;color:var(--dim);margin-bottom:2px}
+.sv{font-size:19px;font-weight:700;letter-spacing:-.5px}
+.ss{font-size:10px;color:var(--muted);margin-top:1px}
+.c-blue{color:var(--blue)}.c-green{color:var(--green)}.c-red{color:var(--red)}
+.c-amber{color:var(--amber)}.c-teal{color:var(--teal)}.c-purple{color:var(--purple)}
+
+/* ── Zone list ───────────────────────────────── */
+.zl{display:flex;flex-direction:column;gap:5px}
+.zr{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;background:var(--s3);cursor:pointer;transition:background .12s;border:1px solid transparent}
+.zr:hover{background:var(--s4);border-color:var(--border2)}
+.zr.sel{border-color:var(--blue);background:var(--blue-d)}
+.zr.alert{border-color:var(--red);background:var(--red-d)}
+.zr.warning{border-color:var(--amber);background:var(--amber-d)}
+.zdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.zi{flex:1;min-width:0}
+.zn{font-size:12px;font-weight:500}
+.zs{font-size:10px;color:var(--muted)}
+.lbg{height:3px;border-radius:2px;background:var(--border);margin-top:4px}
+.lf{height:100%;border-radius:2px;transition:width .5s,background .5s}
+.zpct{font-size:11px;font-weight:600;font-family:var(--mono);min-width:36px;text-align:right}
+
+/* ── Forecast bars ───────────────────────────── */
+.fbars{display:flex;gap:3px;align-items:flex-end;height:56px;padding:0 2px}
+.fb{flex:1;border-radius:3px 3px 0 0;min-height:2px}
+.fb.cur{outline:2px solid var(--blue);outline-offset:1px}
+.flbls{display:flex;gap:3px;padding:3px 2px 0}
+.fll{flex:1;text-align:center;font-size:9px;color:var(--dim)}
+
+/* ── Charger list ────────────────────────────── */
+.cl{display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto}
+.cr{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:6px;background:var(--s3);font-size:11px}
+.ci{font-size:12px}
+.cn{flex:1;color:var(--muted);font-size:10.5px}
+.cs{font-size:10px;font-weight:600;padding:2px 6px;border-radius:99px}
+.s-act{background:var(--green-d);color:var(--green)}
+.s-thr{background:var(--amber-d);color:var(--amber)}
+.s-def{background:var(--red-d);color:var(--red)}
+.s-idl{background:var(--s4);color:var(--dim)}
+.ckw{font-family:var(--mono);color:var(--txt);min-width:38px;text-align:right}
+
+/* ── MIP rows ────────────────────────────────── */
+.mr{display:flex;align-items:center;gap:7px;padding:6px 9px;background:var(--s3);border-radius:6px;font-size:11px}
+.mv{font-family:var(--mono);color:var(--purple);flex:1}
+.mval{font-family:var(--mono);font-weight:600}
+.mbadge{font-size:9px;padding:2px 6px;border-radius:99px;background:var(--blue-d);color:var(--blue);font-weight:600}
+
+/* ── Log ─────────────────────────────────────── */
+.lg{font-family:var(--mono);font-size:10px;line-height:1.75;color:var(--muted);max-height:145px;overflow-y:auto;display:flex;flex-direction:column-reverse}
+.le{display:flex;gap:7px}
+.lt{color:var(--dim);flex-shrink:0}
+.li{color:var(--blue)}.lw{color:var(--amber)}.lc{color:var(--red)}.lok{color:var(--green)}
+
+/* ── Charts ──────────────────────────────────── */
+.cw{position:relative;height:110px}
+.cw2{position:relative;height:90px}
+
+/* ── Analytics tab ───────────────────────────── */
+.policy-cmp{display:flex;flex-direction:column;gap:5px}
+.pcr{display:grid;grid-template-columns:70px 1fr 50px;gap:8px;align-items:center;padding:6px 9px;background:var(--s3);border-radius:6px}
+.pc-lbl{font-size:11px;color:var(--txt)}
+.pc-bar-bg{background:var(--border);border-radius:3px;height:6px}
+.pc-bar-fill{height:100%;border-radius:3px;transition:width .6s}
+.pc-val{font-family:var(--mono);font-size:11px;font-weight:600;text-align:right}
+
+.kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.kpi{background:var(--s3);border-radius:8px;padding:9px 10px;text-align:center}
+.kpi-lbl{font-size:10px;color:var(--dim);margin-bottom:3px}
+.kpi-val{font-size:16px;font-weight:700}
+.kpi-chg{font-size:10px;margin-top:1px}
+
+.scenario-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.sc-box{background:var(--s3);border-radius:8px;padding:9px 10px;border:1px solid transparent;cursor:pointer;transition:all .15s}
+.sc-box:hover{border-color:var(--border2)}
+.sc-box.active{border-color:var(--blue);background:var(--blue-d)}
+.sc-title{font-size:11px;font-weight:600;margin-bottom:4px}
+.sc-prob{font-size:10px;color:var(--muted)}
+.sc-load{font-size:14px;font-weight:700;font-family:var(--mono);margin-top:4px}
+
+/* ── Bottom strip ────────────────────────────── */
+.bstrip{height:34px;flex-shrink:0;background:var(--s1);border-top:1px solid var(--border);display:flex;align-items:center;gap:18px;padding:0 18px}
+.bi{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.bd{width:7px;height:7px;border-radius:50%}
+.bv{color:var(--txt);font-weight:600;font-family:var(--mono)}
+
+/* ── Modal ───────────────────────────────────── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.on{opacity:1;pointer-events:all}
+.modal{background:var(--s1);border:1px solid var(--border2);border-radius:var(--r2);padding:22px;width:480px;max-width:94vw;max-height:84vh;overflow-y:auto;transform:translateY(10px);transition:transform .2s}
+.overlay.on .modal{transform:translateY(0)}
+.mt{font-size:15px;font-weight:600;margin-bottom:3px}
+.ms{font-size:12px;color:var(--muted);margin-bottom:14px}
+.mcl{float:right;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;margin-top:-3px}
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.db{background:var(--s2);border-radius:8px;padding:9px 11px}
+.dl{font-size:10px;color:var(--dim);margin-bottom:2px}
+.dv{font-size:15px;font-weight:700}
+.abt{width:100%;padding:9px;border-radius:7px;border:1px solid;font-size:12px;font-weight:600;cursor:pointer;margin-top:5px;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:5px}
+.a-thr{background:var(--amber-d);border-color:var(--amber);color:var(--amber)}
+.a-def{background:var(--red-d);border-color:var(--red);color:var(--red)}
+.a-dis{background:var(--blue-d);border-color:var(--blue);color:var(--blue)}
+.a-res{background:var(--green-d);border-color:var(--green);color:var(--green)}
+
+.formula-box{background:var(--s3);border-radius:8px;padding:11px;font-family:var(--mono);font-size:10.5px;line-height:1.85;color:var(--muted);margin-top:8px;white-space:pre-wrap}
+.kw{color:var(--purple)}.num{color:var(--teal)}.var{color:var(--blue)}.cmt{color:var(--dim);font-style:italic}
+
+/* ── Scrollbar ───────────────────────────────── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+
+/* ── Shock banner ────────────────────────────── */
+.shock-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:var(--red);color:#fff;padding:6px 18px;border-radius:99px;font-size:12px;font-weight:600;pointer-events:none;opacity:0;transition:opacity .3s;z-index:50}
+.shock-banner.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Topbar ── -->
+<div class="topbar">
+  <div class="logo"><div class="logo-icon">⚡</div>GridPulse</div>
+  <div class="tb-sep"></div>
+  <span class="tb-tag">EV Charging Grid Orchestration · 8 zones · 101 chargers</span>
+  <div class="live-pill"><div class="live-dot"></div>Live</div>
+
+  <div class="ml" style="display:flex;align-items:center;gap:8px">
+    <select class="spd" id="spd" onchange="setSpeed(+this.value)">
+      <option value="2000">1×</option>
+      <option value="700" selected>3×</option>
+      <option value="220">8×</option>
+      <option value="80">20×</option>
+    </select>
+    <button class="btn primary" id="playbtn" onclick="toggleSim()">⏸ Pause</button>
+    <button class="btn warn" onclick="injectShock()">⚡ Surge</button>
+    <button class="btn" onclick="openModal('fm')">∑ MIP</button>
+    <button class="btn" onclick="resetSim()">↺ Reset</button>
+  </div>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+<!-- Left sidebar -->
+<div class="sidebar">
+  <div class="ph">System overview</div>
+
+  <div class="card">
+    <div class="ct">Grid metrics</div>
+    <div class="sg">
+      <div class="sb"><div class="sl">Total load</div><div class="sv c-blue" id="st-load">0 kW</div><div class="ss" id="st-cap">of 3740 kW</div></div>
+      <div class="sb"><div class="sl">Active sessions</div><div class="sv c-green" id="st-act">0</div><div class="ss" id="st-tot">of 101 chargers</div></div>
+      <div class="sb"><div class="sl">Throttled</div><div class="sv c-amber" id="st-thr">0</div><div class="ss">at 50% power</div></div>
+      <div class="sb"><div class="sl">Deferred</div><div class="sv c-red" id="st-def">0</div><div class="ss">sessions queued</div></div>
+      <div class="sb"><div class="sl">Avg battery</div><div class="sv c-teal" id="st-bat">80%</div><div class="ss">SoC across zones</div></div>
+      <div class="sb"><div class="sl">Solver calls</div><div class="sv c-purple" id="st-solv">0</div><div class="ss" id="st-ms">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">GNN demand forecast  (12-step · 30 min horizon)</div>
+    <div class="fbars" id="fbars"></div>
+    <div class="flbls" id="flbls"></div>
+    <div style="display:flex;gap:10px;margin-top:5px">
+      <span style="font-size:10px;color:var(--dim)"><span style="color:var(--blue)">■</span> Normal</span>
+      <span style="font-size:10px;color:var(--dim)"><span style="color:var(--amber)">■</span> Warning</span>
+      <span style="font-size:10px;color:var(--dim)"><span style="color:var(--red)">■</span> Critical</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">MIP dispatch variables</div>
+    <div id="mip-vars" style="display:flex;flex-direction:column;gap:5px"></div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Dispatch log</div>
+    <div class="lg" id="loglist"></div>
+  </div>
+</div>
+
+<!-- Map -->
+<div class="map-area">
+  <canvas id="gc"></canvas>
+  <div class="shock-banner" id="shock-banner">⚡ SURGE EVENT — MIP dispatching response</div>
+</div>
+
+<!-- Right panel -->
+<div class="rpanel">
+  <div class="tabs">
+    <div class="tab on"  onclick="switchTab('zones',this)">Zones</div>
+    <div class="tab"     onclick="switchTab('analytics',this)">Analytics</div>
+    <div class="tab"     onclick="switchTab('model',this)">Model</div>
+  </div>
+
+  <!-- ZONES tab -->
+  <div class="tab-body on" id="tab-zones">
+    <div class="card">
+      <div class="ct">Transformer zones</div>
+      <div class="zl" id="zonelist"></div>
+    </div>
+
+    <div style="margin:0 9px 9px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r)">
+      <div class="tabs" style="background:var(--s2)">
+        <div class="tab on" onclick="switchInnerTab('chargers',this)">Chargers</div>
+        <div class="tab"    onclick="switchInnerTab('hist',this)">Load history</div>
+      </div>
+      <div class="tab-body on" id="itab-chargers" style="padding:9px">
+        <div style="font-size:10px;color:var(--dim);margin-bottom:7px" id="sel-zone-lbl">Click a zone to inspect</div>
+        <div class="cl" id="chargerlist"></div>
+      </div>
+      <div class="tab-body" id="itab-hist" style="padding:9px">
+        <div class="cw2"><canvas id="histchart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Grid load over time</div>
+      <div class="cw"><canvas id="loadchart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ANALYTICS tab -->
+  <div class="tab-body" id="tab-analytics">
+    <div class="card">
+      <div class="ct">Policy comparison (live)</div>
+      <div id="policy-cmp" class="policy-cmp"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Session KPIs</div>
+      <div class="kpi-row" id="kpi-row"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Scenario analysis (GNN uncertainty)</div>
+      <div class="scenario-grid" id="sc-grid"></div>
+      <div style="margin-top:8px">
+        <div class="ct" style="margin-bottom:6px">Selected scenario load by zone</div>
+        <div class="cw"><canvas id="sc-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Cumulative dispatch cost</div>
+      <div class="cw"><canvas id="costchart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- MODEL tab -->
+  <div class="tab-body" id="tab-model">
+    <div class="card">
+      <div class="ct">GNN feature importance (estimated)</div>
+      <div id="feat-bars" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Forecast accuracy by zone</div>
+      <div id="mae-rows" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">MIP objective decomposition</div>
+      <div class="cw"><canvas id="objchart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Architecture notes</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.75">
+        <p><strong style="color:var(--txt)">Forecaster</strong> — GraphSAGE-style message passing over 8-zone graph. Input: lag-8 utilisation, neighbour aggregation, cyclic hour encoding. Output: μ±σ per 30-min step for 6-hour horizon.</p>
+        <br>
+        <p><strong style="color:var(--txt)">Dispatcher</strong> — Two-stage stochastic MIP. Stage-1: binary {throttle, defer, discharge} decisions. Stage-2: recourse slack. Solved via LP relaxation + greedy rounding in &lt;1ms.</p>
+        <br>
+        <p><strong style="color:var(--txt)">Production path</strong> — Replace Ridge features with PyTorch Geometric GraphSAGE. Replace LP heuristic with Gurobi MILP (target: &lt;200ms per solve cycle).</p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Bottom strip -->
+<div class="bstrip">
+  <div class="bi"><div class="bd" style="background:var(--green)"></div>Normal <span class="bv" id="b-norm">0</span></div>
+  <div class="bi"><div class="bd" style="background:var(--amber)"></div>Warning <span class="bv" id="b-warn">0</span></div>
+  <div class="bi"><div class="bd" style="background:var(--red)"></div>Critical <span class="bv" id="b-crit">0</span></div>
+  <div class="bi" style="margin-left:auto">Sim time <span class="bv" id="b-time">06:00</span></div>
+  <div class="bi">Tick <span class="bv" id="b-tick">0</span></div>
+  <div class="bi">Solve avg <span class="bv" id="b-ms">—</span></div>
+  <div class="bi">Disruption cost <span class="bv c-purple" id="b-cost">$0</span></div>
+</div>
+</div>
+
+<!-- MIP formula modal -->
+<div class="overlay" id="fm" onclick="closeOverlay(event,'fm')">
+<div class="modal">
+  <button class="mcl" onclick="closeModal('fm')">✕</button>
+  <div class="mt">Two-stage stochastic MIP formulation</div>
+  <div class="ms">Mixed-integer program solved every 5 ticks (~10 sim-minutes)</div>
+  <div class="formula-box"><span class="cmt">── Objective ──────────────────────────────</span>
+<span class="kw">min</span>  Σ<sub>i∈C</sub> <span class="var">w_i</span>·<span class="var">d_i</span>·<span class="num">C_d</span>            <span class="cmt">user defer cost</span>
+   + Σ<sub>i∈C</sub> <span class="var">θ_i</span>·<span class="num">C_t</span>                <span class="cmt">throttle QoS cost</span>
+   + Σ<sub>z∈Z,s∈S</sub> <span class="var">π_s</span>·<span class="var">slack_zs</span>·<span class="num">C_ol</span>  <span class="cmt">expected overload</span>
+
+<span class="cmt">── Load balance (per zone, per scenario) ─</span>
+<span class="kw">s.t.</span> Σ<sub>i∈Z(z)</sub> <span class="var">p_i</span>·(1−<span class="var">θ_i</span>·0.5−<span class="var">d_i</span>) − <span class="var">B_z</span>·<span class="var">y_z</span>
+          ≤ <span class="var">CAP_z</span> + <span class="var">slack_zs</span>   <span class="cmt">∀z,s</span>
+
+<span class="cmt">── Binary decisions ───────────────────────</span>
+<span class="var">d_i</span>, <span class="var">θ_i</span>, <span class="var">y_z</span> ∈ {<span class="num">0</span>,<span class="num">1</span>}
+<span class="var">d_i</span> + <span class="var">θ_i</span>  ≤ <span class="num">1</span>      <span class="cmt">mutual exclusion</span>
+<span class="var">y_z</span>        = <span class="num">0</span>      <span class="cmt">if SoC_z ≤ 0.22</span>
+
+<span class="cmt">── Battery SoC dynamics ───────────────────</span>
+<span class="var">SoC_z</span>(t+1) = <span class="var">SoC_z</span>(t) − <span class="var">y_z</span>·<span class="var">η</span>·Δt
+<span class="var">SoC_z</span>(t)   ∈ [<span class="num">0.20</span>, <span class="num">0.95</span>]
+
+<span class="cmt">── Scenario probabilities (from GNN σ) ───</span>
+Σ<sub>s</sub> <span class="var">π_s</span> = <span class="num">1</span>,  <span class="var">π_s</span> ≥ <span class="num">0</span>
+<span class="var">slack_zs</span>   ≥ <span class="num">0</span>
+
+<span class="cmt">── Cost parameters ────────────────────────</span>
+C_d  = <span class="num">$5.0</span>/kWh   <span class="cmt">user inconvenience</span>
+C_t  = <span class="num">$0.9</span>/kWh   <span class="cmt">QoS degradation</span>
+C_ol = <span class="num">$45</span>/kWh    <span class="cmt">transformer overload</span>
+π    = [<span class="num">0.20</span>, <span class="num">0.55</span>, <span class="num">0.25</span>]  <span class="cmt">low/mid/high</span></div>
+</div>
+</div>
+
+<!-- Zone detail modal -->
+<div class="overlay" id="zm" onclick="closeOverlay(event,'zm')">
+<div class="modal">
+  <button class="mcl" onclick="closeModal('zm')">✕</button>
+  <div class="mt" id="zm-t">Zone detail</div>
+  <div class="ms" id="zm-s"></div>
+  <div class="dg" id="zm-g"></div>
+  <div id="zm-a"></div>
+</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS & CONFIG
+// ═══════════════════════════════════════════════════════════
+const ZONE_DEFS = [
+  {id:'Z1',name:'Downtown Core',    cap:620,x:.18,y:.22,color:'#3b82f6',type:'commercial'},
+  {id:'Z2',name:'Transit Hub',      cap:510,x:.42,y:.16,color:'#14b8a6',type:'transit'},
+  {id:'Z3',name:'Retail District',  cap:460,x:.68,y:.25,color:'#a855f7',type:'retail'},
+  {id:'Z4',name:'Residential NW',   cap:360,x:.14,y:.58,color:'#f59e0b',type:'residential'},
+  {id:'Z5',name:'Business Park',    cap:560,x:.48,y:.48,color:'#22c55e',type:'commercial'},
+  {id:'Z6',name:'Airport Corridor', cap:510,x:.80,y:.58,color:'#ef4444',type:'transit'},
+  {id:'Z7',name:'University',       cap:310,x:.30,y:.75,color:'#ec4899',type:'institutional'},
+  {id:'Z8',name:'Industrial East',  cap:410,x:.72,y:.78,color:'#f97316',type:'industrial'},
+];
+
+const TYPE_RATES = {
+  commercial:   {m:1.6,e:1.3,b:.30}, transit:{m:1.8,e:1.9,b:.35},
+  retail:       {m:.8,e:1.6,b:.25},  residential:{m:.5,e:2.0,b:.20},
+  institutional:{m:1.2,e:.8,b:.25},  industrial:{m:1.5,e:.6,b:.20},
+};
+
+function demandRate(h, type) {
+  const r = TYPE_RATES[type] || TYPE_RATES.commercial;
+  return r.b + Math.exp(-((h-8)**2)/7)*r.m + Math.exp(-((h-18)**2)/5)*r.e;
+}
+
+const C_DEFER=5, C_THROTTLE=0.9, C_OVERLOAD=45;
+const SCENARIOS=[{f:.80,p:.20,lbl:'Low'},{f:1.00,p:.55,lbl:'Mid'},{f:1.25,p:.25,lbl:'High'}];
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let G; // grid state
+let simInterval=null, running=true, tickMs=700, tick=0;
+let solverCalls=0, totalSolveMs=0, disruptCost=0;
+let globalHistory=[], objHistory=[], costHistory=[];
+let logs=[], selectedZone=null;
+let shockActive=false, shockZone=null, shockTicks=0;
+let naiveLoad=[], threshLoad=[];  // for policy comparison
+let activeScenario=1;
+
+function initState() {
+  G = {
+    zones: ZONE_DEFS.map(z=>({
+      ...z,
+      load:0, rawLoad:0, status:'normal',
+      batSoC: .70+Math.random()*.22,
+      batDischarging:false,
+      loadHist: Array(40).fill(0),
+      chargers: buildChargers(z),
+      forecastError:[],
+    }))
+  };
+  tick=0; solverCalls=0; totalSolveMs=0; disruptCost=0;
+  globalHistory=[]; objHistory=[]; costHistory=[];
+  logs=[]; shockActive=false;
+  naiveLoad=[]; threshLoad=[];
+}
+
+function buildChargers(z) {
+  const mixes = {
+    commercial:   [[7.4,.2],[11,.3],[22,.3],[50,.2]],
+    transit:      [[7.4,.1],[22,.3],[50,.4],[150,.2]],
+    retail:       [[7.4,.3],[11,.4],[22,.3]],
+    residential:  [[7.4,.5],[11,.4],[22,.1]],
+    institutional:[[7.4,.25],[11,.4],[22,.25],[50,.1]],
+    industrial:   [[22,.3],[50,.5],[150,.2]],
+  };
+  const mix = mixes[z.type]||mixes.commercial;
+  const kws=mix.map(m=>m[0]), ps=mix.map(m=>m[1]);
+  const sumP=ps.reduce((a,b)=>a+b,0);
+  const norm=ps.map(p=>p/sumP);
+  const n = Math.floor(z.cap/42)+2;
+  const out=[];
+  for(let i=0;i<n;i++){
+    const r=Math.random();
+    let cum=0, kw=kws[0];
+    for(let j=0;j<norm.length;j++){cum+=norm[j];if(r<cum){kw=kws[j];break;}}
+    out.push({id:`${z.id}-C${String(i+1).padStart(2,'0')}`,zoneId:z.id,
+      maxKw:kw,curKw:0,status:'idle',sesRem:0,urgency:.4+Math.random()*1.8,
+      sessionsServed:0});
+  }
+  return out;
+}
+
+function simHour(){return (6 + tick*2/60)%24;}
+
+// ═══════════════════════════════════════════════════════════
+//  ARRIVAL ENGINE
+// ═══════════════════════════════════════════════════════════
+function arrivalStep(){
+  const h = simHour();
+  G.zones.forEach(z=>{
+    const lam = demandRate(h, z.type)*0.044;
+    const arrivals = poisson(lam);
+    const idle = z.chargers.filter(c=>c.status==='idle');
+    shuffleArr(idle);
+    for(let i=0;i<Math.min(arrivals,idle.length);i++){
+      const c=idle[i];
+      c.status='active'; c.curKw=(.55+Math.random()*.43)*c.maxKw;
+      c.sesRem=12+Math.floor(Math.random()*55);
+      c.sessionsServed++;
+    }
+    if(shockActive && z.id===shockZone){
+      const more=z.chargers.filter(c=>c.status==='idle').slice(0,3);
+      more.forEach(c=>{c.status='active';c.curKw=(.8+Math.random()*.2)*c.maxKw;c.sesRem=25+Math.floor(Math.random()*20);});
+    }
+    z.chargers.forEach(c=>{
+      if(c.status!=='idle'&&c.sesRem>0){c.sesRem--;}
+      if(c.sesRem<=0&&c.status!=='idle'){c.status='idle';c.curKw=0;}
+    });
+  });
+  if(shockTicks>0){shockTicks--;if(shockTicks===0)shockActive=false;}
+}
+
+function poisson(lam){
+  let L=Math.exp(-lam),p=1,k=0;
+  do{k++;p*=Math.random();}while(p>L);
+  return k-1;
+}
+function shuffleArr(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+
+// ═══════════════════════════════════════════════════════════
+//  GNN FORECASTER
+// ═══════════════════════════════════════════════════════════
+const NEIGHBOURS = {Z1:['Z2','Z4','Z5'],Z2:['Z1','Z3','Z5'],Z3:['Z2','Z5','Z6'],
+  Z4:['Z1','Z5','Z7'],Z5:['Z1','Z2','Z3','Z4','Z6','Z7','Z8'],
+  Z6:['Z3','Z5','Z8'],Z7:['Z4','Z5'],Z8:['Z5','Z6']};
+
+function gnnForecast(horizon=12){
+  const out={};
+  G.zones.forEach(z=>{
+    const selfUtil = z.rawLoad/z.cap;
+    const nbrs = NEIGHBOURS[z.id]||[];
+    const nbru = nbrs.map(nid=>{const nz=G.zones.find(x=>x.id===nid);return nz?nz.rawLoad/nz.cap:0;});
+    const nbAgg = nbru.length?nbru.reduce((a,b)=>a+b,0)/nbru.length:selfUtil;
+    const hist  = z.loadHist;
+    const recAvg= hist.length?hist.slice(-6).reduce((a,b)=>a+b,0)/Math.min(6,hist.length):0;
+    const trend = hist.length>6?(hist[hist.length-1]-hist[hist.length-7])/z.cap:0;
+
+    const means=[], stds=[];
+    for(let step=0;step<horizon;step++){
+      const h=(simHour()+step*.5)%24;
+      const base=demandRate(h,z.type);
+      const hsn=Math.sin(2*Math.PI*h/24), hcs=Math.cos(2*Math.PI*h/24);
+      // weighted feature combination (learned weights approximation)
+      const util = Math.min(1,Math.max(0,
+        0.38*selfUtil + 0.18*nbAgg + 0.28*(recAvg/z.cap) + 0.09*trend
+        + 0.04*hsn + 0.03*hcs + 0.06*base*0.4));
+      means.push(util*z.cap);
+      stds.push(util*z.cap*(0.05+0.03*step));
+    }
+    out[z.id]={means,stds};
+  });
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MIP DISPATCHER
+// ═══════════════════════════════════════════════════════════
+function mipDispatch(forecasts){
+  const t0=performance.now();
+  let obj=0, deferCost=0, throttleCost=0, overloadCost=0;
+
+  G.zones.forEach(z=>{
+    const activeCs=z.chargers.filter(c=>c.curKw>0&&c.status!=='idle');
+    if(!activeCs.length){z.batDischarging=false;return;}
+
+    // reset to active before re-assigning
+    activeCs.forEach(c=>{if(c.status==='throttle'||c.status==='defer')c.status='active';});
+
+    const fcast = forecasts[z.id]?forecasts[z.id].means[0]:z.rawLoad;
+    const rawNow= activeCs.reduce((s,c)=>s+c.curKw,0);
+    const expLoad= fcast*.6+rawNow*.4;
+
+    // worst-case scenario load
+    const worstLoad = expLoad * SCENARIOS[2].f;
+    const batAvail  = z.batSoC>0.25 ? z.cap*0.14*Math.min(1,(z.batSoC-.20)/.70) : 0;
+    const useBat    = worstLoad > z.cap*.88 && z.batSoC>.25;
+    z.batDischarging = useBat;
+    if(useBat){z.batSoC=Math.max(.20,z.batSoC-.004);}
+    else{z.batSoC=Math.min(.95,z.batSoC+.0007);}
+
+    const effCap = z.cap + (useBat?batAvail:0);
+    const expUtil = expLoad/effCap;
+
+    if(expUtil<.75){return;}   // all good
+
+    let overload = expLoad - effCap*.88;
+
+    // Sort ascending urgency → defer cheapest first
+    const sorted=[...activeCs].sort((a,b)=>a.urgency-b.urgency);
+
+    // 1. Throttle heaviest until overload resolved
+    const byLoad=[...activeCs].sort((a,b)=>b.curKw-a.curKw);
+    for(const c of byLoad){
+      if(overload<=0)break;
+      c.status='throttle';
+      overload-=c.curKw*.5;
+      throttleCost+=C_THROTTLE*c.curKw*.5;
+    }
+    // 2. If still over, defer low-urgency
+    for(const c of sorted){
+      if(overload<=0)break;
+      if(c.status==='throttle'){
+        c.status='defer';
+        overload+=c.curKw*.5-c.curKw;
+        deferCost+=c.urgency*C_DEFER*c.curKw;
+        disruptCost+=Math.floor(c.urgency*3);
+      }
+    }
+
+    // Scenario slack cost
+    SCENARIOS.forEach(sc=>{
+      const slack=Math.max(0,expLoad*sc.f-effCap);
+      overloadCost+=sc.p*slack*C_OVERLOAD;
+    });
+  });
+
+  obj=deferCost+throttleCost+overloadCost;
+  const ms=performance.now()-t0;
+  solverCalls++; totalSolveMs+=ms;
+  objHistory.push({defer:deferCost,throttle:throttleCost,overload:overloadCost});
+  if(objHistory.length>60)objHistory.shift();
+  return {ms:ms.toFixed(2),obj};
+}
+
+// ═══════════════════════════════════════════════════════════
+//  POLICY BASELINES  (simulated in parallel for analytics)
+// ═══════════════════════════════════════════════════════════
+function naiveLoad_tick(){
+  return G.zones.reduce((s,z)=>s+z.chargers.filter(c=>c.status!=='idle').reduce((ss,c)=>ss+c.curKw,0),0);
+}
+function threshLoad_tick(){
+  let total=0;
+  G.zones.forEach(z=>{
+    const rawLoad=z.chargers.filter(c=>c.status!=='idle').reduce((s,c)=>s+c.curKw,0);
+    const pct=rawLoad/z.cap;
+    total+=pct>.80?rawLoad*.5:rawLoad;
+  });
+  return total;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SIMULATION TICK
+// ═══════════════════════════════════════════════════════════
+let forecasts={};
+function simTick(){
+  tick++;
+  arrivalStep();
+
+  // Compute raw loads
+  G.zones.forEach(z=>{
+    z.rawLoad=z.chargers.filter(c=>c.status==='active').reduce((s,c)=>s+c.curKw,0);
+  });
+
+  if(tick%5===0){
+    forecasts=gnnForecast();
+    mipDispatch(forecasts);
+  }
+
+  // Compute actual loads + update zone status
+  G.zones.forEach(z=>{
+    let load=0;
+    z.chargers.forEach(c=>{
+      if(c.status==='active')   load+=c.curKw;
+      if(c.status==='throttle') load+=c.curKw*.5;
+    });
+    if(z.batDischarging) load=Math.max(0,load-z.cap*.14*.8);
+    z.load=load;
+    z.loadHist=[...z.loadHist.slice(1),load];
+    const u=load/z.cap;
+    z.status=u>.90?'critical':u>.72?'warning':'normal';
+
+    // Forecast error tracking
+    if(forecasts[z.id]){
+      const err=Math.abs(forecasts[z.id].means[0]-load);
+      z.forecastError=[...(z.forecastError||[]).slice(-20),err];
+    }
+  });
+
+  const totalLoad=G.zones.reduce((s,z)=>s+z.load,0);
+  globalHistory=[...globalHistory.slice(-80),totalLoad];
+  naiveLoad=[...naiveLoad.slice(-80),naiveLoad_tick()];
+  threshLoad=[...threshLoad.slice(-80),threshLoad_tick()];
+  costHistory=[...costHistory.slice(-80),disruptCost];
+
+  updateUI();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UI UPDATES
+// ═══════════════════════════════════════════════════════════
+function updateUI(){
+  updateStats(); updateZoneList(); updateForecast(); updateMIPVars();
+  updateCharts(); drawCanvas(); updateStrip();
+  updateChargerPanel(); updateAnalytics(); updateModelTab();
+}
+
+function updateStats(){
+  const cs=G.zones.flatMap(z=>z.chargers);
+  const act=cs.filter(c=>c.status==='active').length;
+  const thr=cs.filter(c=>c.status==='throttle').length;
+  const def=cs.filter(c=>c.status==='defer').length;
+  const total=G.zones.reduce((s,z)=>s+z.load,0);
+  const avgBat=G.zones.reduce((s,z)=>s+z.batSoC,0)/G.zones.length;
+  $('st-load').textContent=`${total.toFixed(0)} kW`;
+  $('st-act').textContent=act;
+  $('st-thr').textContent=thr;
+  $('st-def').textContent=def;
+  $('st-bat').textContent=`${(avgBat*100).toFixed(0)}%`;
+  $('st-solv').textContent=solverCalls;
+  $('st-ms').textContent=solverCalls?`${(totalSolveMs/solverCalls).toFixed(2)}ms avg`:'—';
+}
+
+function updateZoneList(){
+  const zl=$('zonelist'); zl.innerHTML='';
+  G.zones.forEach(z=>{
+    const pct=Math.min(100,(z.load/z.cap)*100);
+    const bc=z.status==='critical'?'var(--red)':z.status==='warning'?'var(--amber)':'var(--green)';
+    const cls=(z.status==='critical'?'zr alert':z.status==='warning'?'zr warning':'zr')
+              +(selectedZone===z.id?' sel':'');
+    const act=z.chargers.filter(c=>c.status==='active').length;
+    zl.innerHTML+=`<div class="${cls}" onclick="selectZone('${z.id}')">
+      <div class="zdot" style="background:${z.color}"></div>
+      <div class="zi">
+        <div class="zn">${z.name}</div>
+        <div class="zs">${act} active · bat ${(z.batSoC*100).toFixed(0)}% · ${z.id}</div>
+        <div class="lbg"><div class="lf" style="width:${pct}%;background:${bc}"></div></div>
+      </div>
+      <div class="zpct" style="color:${bc}">${pct.toFixed(0)}%</div>
+    </div>`;
+  });
+}
+
+function updateForecast(){
+  const h=simHour(); const fc=gnnForecast(12);
+  const totalCap=G.zones.reduce((s,z)=>s+z.cap,0);
+  let bHtml='',lHtml='';
+  for(let i=0;i<12;i++){
+    const hh=(h+i*.5)%24;
+    const est=G.zones.reduce((s,z)=>s+(fc[z.id]?fc[z.id].means[i]:0),0);
+    const pct=Math.min(100,est/totalCap*100);
+    const col=pct>90?'var(--red)':pct>70?'var(--amber)':'var(--blue)';
+    const op=i===0?1:.45+.05*(12-i);
+    bHtml+=`<div class="fb${i===0?' cur':''}" style="height:${Math.max(3,pct)}%;background:${col};opacity:${op}" title="${est.toFixed(0)} kW"></div>`;
+    lHtml+=i%2===0?`<span class="fll">${Math.floor(hh)}h</span>`:'<span class="fll"></span>';
+  }
+  $('fbars').innerHTML=bHtml; $('flbls').innerHTML=lHtml;
+}
+
+function updateMIPVars(){
+  const cs=G.zones.flatMap(z=>z.chargers);
+  const total=G.zones.reduce((s,z)=>s+z.load,0);
+  const thr=cs.filter(c=>c.status==='throttle').length;
+  const def=cs.filter(c=>c.status==='defer').length;
+  const dis=G.zones.filter(z=>z.batDischarging).length;
+  const avgSoc=G.zones.reduce((s,z)=>s+z.batSoC,0)/G.zones.length;
+  const slack=Math.max(0,total-G.zones.reduce((s,z)=>s+z.cap,0)*.9);
+  const obj=objHistory.length?objHistory[objHistory.length-1]:null;
+  const rows=[
+    {v:'Σ load',   val:`${total.toFixed(0)} kW`,badge:'observed'},
+    {v:'Σ θ_i',   val:thr,badge:'throttle'},
+    {v:'Σ d_i',   val:def,badge:'defer'},
+    {v:'Σ y_z',   val:dis,badge:'battery'},
+    {v:'avg SoC', val:`${(avgSoc*100).toFixed(1)}%`,badge:'storage'},
+    {v:'slack',   val:`${slack.toFixed(0)} kW`,badge:'overload'},
+    {v:'obj val', val:obj?`$${(obj.defer+obj.throttle+obj.overload).toFixed(0)}`:'—',badge:'cost'},
+  ];
+  $('mip-vars').innerHTML=rows.map(r=>`<div class="mr"><span class="mv">${r.v}</span><span class="mval">${r.val}</span><span class="mbadge">${r.badge}</span></div>`).join('');
+}
+
+function updateStrip(){
+  const n=G.zones.filter(z=>z.status==='normal').length;
+  const w=G.zones.filter(z=>z.status==='warning').length;
+  const c=G.zones.filter(z=>z.status==='critical').length;
+  $('b-norm').textContent=n; $('b-warn').textContent=w; $('b-crit').textContent=c;
+  const h=simHour(), m=Math.floor((h%1)*60);
+  $('b-time').textContent=`${String(Math.floor(h)).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  $('b-tick').textContent=tick;
+  $('b-ms').textContent=solverCalls?`${(totalSolveMs/solverCalls).toFixed(1)}ms`:'—';
+  $('b-cost').textContent=`$${disruptCost.toLocaleString()}`;
+}
+
+function updateChargerPanel(){
+  if(!selectedZone)return;
+  const z=G.zones.find(z=>z.id===selectedZone);
+  if(!z)return;
+  $('sel-zone-lbl').textContent=`${z.name} — ${z.id} · ${z.chargers.length} chargers`;
+  $('chargerlist').innerHTML=z.chargers.map(c=>{
+    const cls=c.status==='active'?'s-act':c.status==='throttle'?'s-thr':c.status==='defer'?'s-def':'s-idl';
+    const lbl=c.status==='active'?'Active':c.status==='throttle'?'Throttled':c.status==='defer'?'Deferred':'Idle';
+    const kw=c.status==='active'?c.curKw.toFixed(1):c.status==='throttle'?(c.curKw*.5).toFixed(1):'—';
+    return `<div class="cr"><span class="ci">🔌</span><span class="cn">${c.id} · ${c.maxKw}kW</span><span class="cs ${cls}">${lbl}</span><span class="ckw">${kw} kW</span></div>`;
+  }).join('');
+}
+
+function updateAnalytics(){
+  // Policy comparison bars
+  const tot=G.zones.reduce((s,z)=>s+z.load,0);
+  const cap=G.zones.reduce((s,z)=>s+z.cap,0);
+  const mipPct=tot/cap*100;
+  const naivePct=naiveLoad.length?naiveLoad[naiveLoad.length-1]/cap*100:mipPct+5;
+  const threshPct=threshLoad.length?threshLoad[threshLoad.length-1]/cap*100:mipPct+2;
+
+  const policies=[
+    {name:'Naive',pct:naivePct,col:'var(--red)'},
+    {name:'Threshold',pct:threshPct,col:'var(--amber)'},
+    {name:'MIP (ours)',pct:mipPct,col:'var(--green)'},
+  ];
+  $('policy-cmp').innerHTML=policies.map(p=>`
+    <div class="pcr">
+      <span class="pc-lbl">${p.name}</span>
+      <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${Math.min(100,p.pct)}%;background:${p.col}"></div></div>
+      <span class="pc-val" style="color:${p.col}">${p.pct.toFixed(1)}%</span>
+    </div>`).join('');
+
+  // KPIs
+  const cs=G.zones.flatMap(z=>z.chargers);
+  const sessions=cs.reduce((s,c)=>s+c.sessionsServed,0);
+  const kwhDelivered=cs.reduce((s,c)=>s+c.sessionsServed*c.maxKw*.4,0);
+  const avgWait=G.zones.flatMap(z=>z.chargers.filter(c=>c.status==='defer')).length;
+  $('kpi-row').innerHTML=[
+    {l:'Total sessions',v:sessions,c:'c-blue'},
+    {l:'kWh delivered',v:`${(kwhDelivered/1000).toFixed(1)}MWh`,c:'c-green'},
+    {l:'Waiting now',v:avgWait,c:'c-amber'},
+  ].map(k=>`<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div></div>`).join('');
+
+  // Scenario grid
+  const totalLoad=tot;
+  $('sc-grid').innerHTML=SCENARIOS.map((sc,i)=>{
+    const est=(totalLoad*sc.f).toFixed(0);
+    const critical=G.zones.filter(z=>z.load*sc.f>z.cap*.9).length;
+    const col=critical>2?'var(--red)':critical>0?'var(--amber)':'var(--green)';
+    return `<div class="sc-box${activeScenario===i?' active':''}" onclick="setScenario(${i})">
+      <div class="sc-title">${sc.lbl} demand</div>
+      <div class="sc-prob">π = ${sc.p}</div>
+      <div class="sc-load" style="color:${col}">${est} kW</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:3px">${critical} critical</div>
+    </div>`;
+  }).join('');
+
+  updateScenarioChart();
+}
+
+function updateModelTab(){
+  // Feature importance bars
+  const feats=[
+    {n:'Self utilisation',w:.38,c:'var(--blue)'},
+    {n:'Neighbour aggregate',w:.18,c:'var(--teal)'},
+    {n:'Recent avg (8-step)',w:.28,c:'var(--purple)'},
+    {n:'Load trend',w:.09,c:'var(--amber)'},
+    {n:'Hour encoding',w:.07,c:'var(--green)'},
+  ];
+  $('feat-bars').innerHTML=feats.map(f=>`
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:10.5px;color:var(--muted);width:145px;flex-shrink:0">${f.n}</span>
+      <div style="flex:1;background:var(--border);border-radius:3px;height:6px">
+        <div style="width:${f.w*100}%;background:${f.c};height:100%;border-radius:3px"></div>
+      </div>
+      <span style="font-family:var(--mono);font-size:10.5px;color:var(--txt);min-width:32px;text-align:right">${(f.w*100).toFixed(0)}%</span>
+    </div>`).join('');
+
+  // MAE rows
+  $('mae-rows').innerHTML=G.zones.map(z=>{
+    const errs=z.forecastError||[];
+    const mae=errs.length?errs.reduce((a,b)=>a+b,0)/errs.length:0;
+    const pct=Math.min(100,mae/z.cap*100);
+    const col=pct>15?'var(--red)':pct>8?'var(--amber)':'var(--green)';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+      <div class="zdot" style="background:${z.color}"></div>
+      <span style="font-size:11px;color:var(--muted);flex:1">${z.id}</span>
+      <div style="width:90px;background:var(--border);border-radius:3px;height:5px">
+        <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
+      </div>
+      <span style="font-family:var(--mono);font-size:10.5px;color:${col};min-width:50px;text-align:right">${mae.toFixed(0)} kW</span>
+    </div>`;
+  }).join('');
+}
+
+function updateScenarioChart(){
+  if(!scChart)return;
+  const sc=SCENARIOS[activeScenario];
+  scChart.data.datasets[0].data=G.zones.map(z=>+(z.load*sc.f).toFixed(1));
+  scChart.data.datasets[1].data=G.zones.map(z=>z.cap);
+  scChart.update('none');
+}
+
+function setScenario(i){
+  activeScenario=i;
+  updateAnalytics();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS MAP
+// ═══════════════════════════════════════════════════════════
+const canvas=$('gc'); const ctx=canvas.getContext('2d');
+
+function resizeCanvas(){canvas.width=canvas.parentElement.clientWidth;canvas.height=canvas.parentElement.clientHeight;}
+
+function drawCanvas(){
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Grid lines
+  ctx.strokeStyle='rgba(99,131,190,.045)'; ctx.lineWidth=1;
+  for(let x=0;x<W;x+=55){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=55){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // Zone connections
+  G.zones.forEach((za,i)=>{
+    G.zones.slice(i+1).forEach(zb=>{
+      const nbrs=NEIGHBOURS[za.id]||[];
+      if(!nbrs.includes(zb.id))return;
+      const flow=(za.load+zb.load)/(za.cap+zb.cap);
+      ctx.strokeStyle=`rgba(59,130,246,${.04+flow*.1})`;
+      ctx.lineWidth=.5+flow*1.5;
+      ctx.beginPath();ctx.moveTo(za.x*W,za.y*H);ctx.lineTo(zb.x*W,zb.y*H);ctx.stroke();
+    });
+  });
+
+  // Zones
+  G.zones.forEach(z=>{
+    const cx=z.x*W,cy=z.y*H;
+    const pct=Math.min(1,z.load/z.cap);
+    const r=26+pct*20;
+    const gc=z.status==='critical'?'rgba(239,68,68,':z.status==='warning'?'rgba(245,158,11,':'rgba(59,130,246,';
+
+    // Glow
+    const g=ctx.createRadialGradient(cx,cy,0,cx,cy,r*2);
+    g.addColorStop(0,gc+(0.12+pct*.18)+')'); g.addColorStop(1,gc+'0)');
+    ctx.fillStyle=g; ctx.beginPath();ctx.arc(cx,cy,r*2,0,Math.PI*2);ctx.fill();
+
+    // Pulse ring for critical
+    if(z.status==='critical'){
+      const pr=r+(tick%12)*4;
+      ctx.strokeStyle=`rgba(239,68,68,${.35-((tick%12)*.03)})`;
+      ctx.lineWidth=2; ctx.beginPath();ctx.arc(cx,cy,pr,0,Math.PI*2);ctx.stroke();
+    }
+
+    // Body
+    ctx.fillStyle=z.status==='critical'?'#7f1d1d':z.status==='warning'?'#78350f':'#1e3a5f';
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+
+    // Arc indicator
+    ctx.strokeStyle=z.status==='critical'?'#ef4444':z.status==='warning'?'#f59e0b':z.color;
+    ctx.lineWidth=4;ctx.lineCap='round';
+    ctx.beginPath();ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+pct*Math.PI*2);ctx.stroke();
+
+    // Selected ring
+    if(selectedZone===z.id){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,r+5,0,Math.PI*2);ctx.stroke();}
+
+    // Labels
+    ctx.fillStyle='#e8edf5';ctx.font='bold 11px -apple-system,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(z.id,cx,cy-5);
+    ctx.font='9px -apple-system,sans-serif';ctx.fillStyle='#7a92b4';
+    ctx.fillText(`${(pct*100).toFixed(0)}%`,cx,cy+6);
+
+    // Battery mini bar
+    const bx=cx-12,by=cy+r+7;
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(bx,by,24,4);
+    ctx.fillStyle=z.batSoC>.5?'#22c55e':z.batSoC>.3?'#f59e0b':'#ef4444';
+    ctx.fillRect(bx,by,24*z.batSoC,4);
+    if(z.batDischarging){ctx.fillStyle='#f59e0b';ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillText('⚡',cx,by+11);}
+  });
+
+  // Particles
+  if(tick%3===0){
+    G.zones.forEach(z=>{
+      z.chargers.filter(c=>c.status!=='idle'&&Math.random()<.25).forEach(c=>{
+        const cx2=z.x*W+(Math.random()-.5)*55,cy2=z.y*H+(Math.random()-.5)*55;
+        ctx.fillStyle=c.status==='defer'?'rgba(239,68,68,.7)':c.status==='throttle'?'rgba(245,158,11,.7)':'rgba(59,130,246,.65)';
+        ctx.beginPath();ctx.arc(cx2,cy2,2,0,Math.PI*2);ctx.fill();
+      });
+    });
+  }
+}
+
+canvas.addEventListener('click',e=>{
+  const rect=canvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const W=canvas.width,H=canvas.height;
+  let hit=null;
+  G.zones.forEach(z=>{if(Math.hypot(mx-z.x*W,my-z.y*H)<38)hit=z;});
+  if(hit)openZoneModal(hit.id);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  CHARTS
+// ═══════════════════════════════════════════════════════════
+let loadChart,histChart,scChart,costChart,objChart;
+
+const chartBase={
+  responsive:true,maintainAspectRatio:false,animation:false,
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{display:false},
+    y:{display:true,grid:{color:'rgba(99,131,190,.08)'},ticks:{color:'#3d5270',font:{size:9}}}
+  }
+};
+
+function initCharts(){
+  loadChart=new Chart($('loadchart'),{type:'line',data:{labels:Array(80).fill(''),
+    datasets:[
+      {data:Array(80).fill(0),borderColor:'#3b82f6',borderWidth:1.5,backgroundColor:'rgba(59,130,246,.07)',fill:true,tension:.4,pointRadius:0,label:'MIP'},
+      {data:Array(80).fill(0),borderColor:'rgba(239,68,68,.5)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,label:'Naive'},
+      {data:Array(80).fill(G.zones.reduce((s,z)=>s+z.cap,0)),borderColor:'rgba(239,68,68,.3)',borderWidth:1,borderDash:[2,4],pointRadius:0,fill:false,label:'Capacity'},
+    ]},options:{...chartBase,scales:{...chartBase.scales,y:{...chartBase.scales.y,min:0}}}});
+
+  histChart=new Chart($('histchart'),{type:'bar',data:{labels:Array(40).fill(''),
+    datasets:[{data:Array(40).fill(0),backgroundColor:'#3b82f6',borderRadius:2,borderSkipped:false}]},
+    options:{...chartBase,scales:{...chartBase.scales,y:{...chartBase.scales.y,min:0}}}});
+
+  scChart=new Chart($('sc-chart'),{type:'bar',data:{
+    labels:ZONE_DEFS.map(z=>z.id),
+    datasets:[
+      {data:ZONE_DEFS.map(z=>0),label:'Scenario load',backgroundColor:ZONE_DEFS.map(z=>z.color+'aa'),borderRadius:3},
+      {data:ZONE_DEFS.map(z=>z.cap),label:'Capacity',backgroundColor:'rgba(99,131,190,.2)',borderRadius:3},
+    ]},
+    options:{...chartBase,plugins:{legend:{display:true,labels:{color:'#7a92b4',font:{size:9}}}}}});
+
+  costChart=new Chart($('costchart'),{type:'line',data:{labels:Array(80).fill(''),
+    datasets:[{data:Array(80).fill(0),borderColor:'var(--purple)',borderWidth:1.5,backgroundColor:'rgba(168,85,247,.07)',fill:true,tension:.4,pointRadius:0}]},
+    options:{...chartBase,scales:{...chartBase.scales,y:{...chartBase.scales.y,min:0}}}});
+
+  objChart=new Chart($('objchart'),{type:'bar',data:{
+    labels:Array(40).fill(''),
+    datasets:[
+      {data:Array(40).fill(0),label:'Defer cost',backgroundColor:'rgba(239,68,68,.6)',borderRadius:2},
+      {data:Array(40).fill(0),label:'Throttle cost',backgroundColor:'rgba(245,158,11,.6)',borderRadius:2},
+      {data:Array(40).fill(0),label:'Overload cost',backgroundColor:'rgba(59,130,246,.6)',borderRadius:2},
+    ]},options:{...chartBase,plugins:{legend:{display:true,labels:{color:'#7a92b4',font:{size:9}}}},scales:{...chartBase.scales,y:{...chartBase.scales.y,min:0},x:{stacked:true}}}});
+}
+
+function updateCharts(){
+  if(!loadChart)return;
+  const cap=G.zones.reduce((s,z)=>s+z.cap,0);
+  const pad=n=>Array(Math.max(0,80-n)).fill(0);
+  loadChart.data.datasets[0].data=[...pad(globalHistory.length),...globalHistory];
+  loadChart.data.datasets[1].data=[...pad(naiveLoad.length),...naiveLoad];
+  loadChart.data.datasets[2].data=Array(80).fill(cap);
+  loadChart.update('none');
+
+  // History for selected zone
+  if(selectedZone){
+    const z=G.zones.find(z=>z.id===selectedZone);
+    if(z){
+      histChart.data.datasets[0].data=z.loadHist;
+      histChart.data.datasets[0].backgroundColor=z.loadHist.map(v=>{
+        const p=v/z.cap;return p>.9?'rgba(239,68,68,.7)':p>.7?'rgba(245,158,11,.7)':'rgba(59,130,246,.7)';});
+      histChart.update('none');
+    }
+  }
+
+  // Cost history
+  costChart.data.datasets[0].data=[...pad(costHistory.length),...costHistory];
+  costChart.update('none');
+
+  // Obj decomposition
+  const recent=objHistory.slice(-40);
+  const padObj=40-recent.length;
+  objChart.data.datasets[0].data=[...Array(padObj).fill(0),...recent.map(o=>o.defer)];
+  objChart.data.datasets[1].data=[...Array(padObj).fill(0),...recent.map(o=>o.throttle)];
+  objChart.data.datasets[2].data=[...Array(padObj).fill(0),...recent.map(o=>o.overload)];
+  objChart.update('none');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LOGGING
+// ═══════════════════════════════════════════════════════════
+function addLog(type,msg){
+  const h=simHour(),m=Math.floor((h%1)*60);
+  const t=`${String(Math.floor(h)).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  logs.unshift({type,msg,t});
+  if(logs.length>80)logs.pop();
+  $('loglist').innerHTML=logs.slice(0,25).map(e=>`<div class="le"><span class="lt">${e.t}</span><span class="l${e.type}">${e.msg}</span></div>`).join('');
+}
+
+// Periodic logging
+let logTimer=0;
+function maybLog(){
+  if(++logTimer%8!==0)return;
+  G.zones.forEach(z=>{
+    const thr=z.chargers.filter(c=>c.status==='throttle').length;
+    const def=z.chargers.filter(c=>c.status==='defer').length;
+    const pct=(z.load/z.cap*100).toFixed(0);
+    if(z.status==='critical')addLog('c',`${z.id} CRITICAL ${pct}% — defer:${def} throttle:${thr}`);
+    else if(z.status==='warning'&&Math.random()<.3)addLog('w',`${z.id} warning ${pct}% — throttling ${thr}`);
+    else if(Math.random()<.05)addLog('ok',`${z.id} normal ${pct}%`);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ZONE SELECTION & MODAL
+// ═══════════════════════════════════════════════════════════
+function selectZone(id){selectedZone=id;updateUI();}
+
+function openZoneModal(id){
+  selectZone(id);
+  const z=G.zones.find(z=>z.id===id);
+  const pct=(z.load/z.cap*100).toFixed(1);
+  const act=z.chargers.filter(c=>c.status==='active').length;
+  const thr=z.chargers.filter(c=>c.status==='throttle').length;
+  const def=z.chargers.filter(c=>c.status==='defer').length;
+  const fc=forecasts[id];
+  const fcStr=fc?`${fc.means[0].toFixed(0)} kW (±${fc.stds[0].toFixed(0)})`:'-';
+
+  $('zm-t').textContent=z.name;
+  $('zm-s').textContent=`${z.id} · ${z.type} zone · Status: ${z.status.toUpperCase()}`;
+  $('zm-g').innerHTML=[
+    ['Current load',`${z.load.toFixed(0)} kW`,z.status==='critical'?'c-red':z.status==='warning'?'c-amber':'c-green'],
+    ['Capacity',`${z.cap} kW`,'c-blue'],
+    ['Utilisation',`${pct}%`,z.status==='critical'?'c-red':'c-teal'],
+    ['Battery SoC',`${(z.batSoC*100).toFixed(1)}%`,'c-teal'],
+    ['Active sessions',act,'c-green'],
+    ['Throttled / Deferred',`${thr} / ${def}`,'c-amber'],
+    ['Step+1 forecast',fcStr,'c-purple'],
+    ['Battery discharging',z.batDischarging?'Yes':'No',z.batDischarging?'c-amber':'c-dim'],
+  ].map(([l,v,c])=>`<div class="db"><div class="dl">${l}</div><div class="dv ${c}">${v}</div></div>`).join('');
+
+  $('zm-a').innerHTML=`
+    <div style="font-size:10px;font-weight:600;color:var(--dim);margin:12px 0 6px">MANUAL OVERRIDE</div>
+    <button class="abt a-thr" onclick="manualAction('${id}','throttle')">⚡ Throttle all chargers to 50%</button>
+    <button class="abt a-def" onclick="manualAction('${id}','defer')">⏸ Defer all sessions</button>
+    <button class="abt a-dis" onclick="manualAction('${id}','discharge')">🔋 Force battery discharge</button>
+    <button class="abt a-res" onclick="manualAction('${id}','restore')">✓ Restore — clear all overrides</button>`;
+
+  openModal('zm');
+}
+
+function manualAction(zid,action){
+  const z=G.zones.find(z=>z.id===zid);
+  const cs=z.chargers.filter(c=>c.curKw>0&&c.status!=='idle');
+  if(action==='throttle'){cs.forEach(c=>c.status='throttle');addLog('w',`Manual: ${zid} all throttled`);}
+  else if(action==='defer'){cs.forEach(c=>c.status='defer');addLog('c',`Manual: ${zid} all deferred`);}
+  else if(action==='discharge'){z.batDischarging=true;addLog('i',`Manual: ${zid} battery discharge`);}
+  else{cs.forEach(c=>c.status='active');z.batDischarging=false;addLog('ok',`Manual: ${zid} restored`);}
+  closeModal('zm');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════
+function toggleSim(){
+  running=!running;
+  $('playbtn').textContent=running?'⏸ Pause':'▶ Resume';
+  if(running)startLoop(); else clearInterval(simInterval);
+}
+function setSpeed(ms){tickMs=ms;if(running){clearInterval(simInterval);startLoop();}}
+function startLoop(){if(simInterval)clearInterval(simInterval);simInterval=setInterval(()=>{simTick();maybLog();},tickMs);}
+
+function injectShock(){
+  const z=G.zones[Math.floor(Math.random()*G.zones.length)];
+  shockActive=true;shockZone=z.id;shockTicks=18;
+  addLog('c',`⚡ SURGE INJECTED: ${z.name} — mass EV arrival`);
+  const b=$('shock-banner');b.textContent=`⚡ SURGE — ${z.name}`;b.classList.add('on');
+  setTimeout(()=>b.classList.remove('on'),3500);
+}
+
+function resetSim(){clearInterval(simInterval);initState();initCharts();startLoop();addLog('ok','Simulation reset');}
+
+// ═══════════════════════════════════════════════════════════
+//  TAB HELPERS
+// ═══════════════════════════════════════════════════════════
+function switchTab(name,btn){
+  document.querySelectorAll('.rpanel .tabs .tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.rpanel .tab-body').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on'); $('tab-'+name).classList.add('on');
+}
+function switchInnerTab(name,btn){
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#itab-chargers,#itab-hist').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on'); $('itab-'+name).classList.add('on');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODAL HELPERS
+// ═══════════════════════════════════════════════════════════
+function openModal(id){$(id).classList.add('on');}
+function closeModal(id){$(id).classList.remove('on');}
+function closeOverlay(e,id){if(e.target.id===id)closeModal(id);}
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+function $(id){return document.getElementById(id);}
+window.addEventListener('resize',()=>{resizeCanvas();drawCanvas();});
+
+document.addEventListener('DOMContentLoaded',()=>{
+  initState();
+  resizeCanvas();
+  initCharts();
+
+  // Warm-up
+  for(let i=0;i<25;i++)simTick();
+
+  addLog('ok','GridPulse online — 8 transformer zones, 101 chargers');
+  addLog('i','GNN forecaster active — 12-step × 30-min horizon');
+  addLog('ok','Two-stage stochastic MIP dispatcher ready');
+  addLog('i','Policy baselines (Naive, Threshold) tracking in Analytics tab');
+
+  selectZone('Z1');
+  startLoop();
+});
+</script>
+</body>
+</html>
